@@ -1,0 +1,1 @@
+<?php return array('dependencies' => array('react', 'react-dom', 'react-jsx-runtime', 'wp-api-fetch', 'wp-data', 'wp-dom-ready', 'wp-i18n', 'wp-url'), 'version' => '98771fb9b9c431121163', 'handle' => 'undefined-front-end-meta-box/index');
