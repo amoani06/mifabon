@@ -16,6 +16,7 @@ class Admin_Settings {
         // Clear conflicting flags that could alter the task list.
         delete_option( 'simply-static-use-single' );
         delete_option( 'simply-static-use-build' );
+        delete_option( 'simply-static-use-language' );
 
         try {
             Plugin::instance()->run_static_export();
@@ -67,6 +68,11 @@ class Admin_Settings {
 
         // Ensure the "View Site" link points to the static site even if the admin bar integration is disabled.
         add_action( 'admin_bar_menu', array( $this, 'filter_view_site_link' ), 200 );
+
+        // Keep export progress in the browser tab for logged-in users using toolbar integrations.
+        add_action( 'wp_ajax_ss_export_progress_title_status', array( $this, 'get_export_progress_title_status' ) );
+        add_action( 'admin_footer', array( $this, 'print_export_progress_title_assets' ) );
+        add_action( 'wp_footer', array( $this, 'print_export_progress_title_assets' ) );
 
         // Handle cancel via URL param as a fallback when REST API is unavailable.
         add_action( 'admin_init', array( $this, 'maybe_handle_cancel_export' ) );
@@ -353,6 +359,7 @@ class Admin_Settings {
 
         // Let integrations (e.g., UAM in Pro) refine the allowed pages list. They may also add '/uam'.
         $allowed_pages = apply_filters( 'ss_allowed_pages', $allowed_pages_default, $current_settings );
+        $can_export_languages = $this->can_show_languages();
 
         $args = apply_filters(
                 'ss_settings_args',
@@ -369,6 +376,8 @@ class Admin_Settings {
                         'blog_id'          => get_current_blog_id(),
                         'need_upgrade'     => 'no',
                         'builds'           => array(),
+                        'languages'        => $this->get_languages(),
+                        'can_export_languages' => $can_export_languages,
                         'hidden_settings'  => apply_filters( 'ss_hidden_settings', array() ),
                         'last_export_end'  => $options->get( 'archive_end_time' ),
                     // Build integrations as an associative array keyed by integration ID
@@ -479,6 +488,216 @@ class Admin_Settings {
         }
 
         wp_enqueue_style( 'simplystatic-settings-style', SIMPLY_STATIC_URL . '/src/admin/build/index.css', array( 'wp-components' ), $asset_version );
+    }
+
+    /**
+     * Get active multilingual languages for the admin app.
+     *
+     * @return array
+     */
+    private function get_languages() {
+        if ( ! $this->can_show_languages() ) {
+            return array();
+        }
+
+        $languages = array();
+
+        $wpml_languages = apply_filters( 'wpml_active_languages', null, array(
+                'skip_missing' => 0,
+                'orderby'      => 'code',
+        ) );
+
+        if ( empty( $wpml_languages ) && function_exists( 'icl_get_languages' ) ) {
+            $wpml_languages = icl_get_languages( 'skip_missing=0&orderby=code' );
+        }
+
+        if ( is_array( $wpml_languages ) && ! empty( $wpml_languages ) ) {
+            foreach ( $wpml_languages as $code => $language ) {
+                $languages[] = array(
+                        'label' => ! empty( $language['native_name'] ) ? $language['native_name'] : $this->get_language_label( $code ),
+                        'value' => ! empty( $language['language_code'] ) ? $language['language_code'] : $code,
+                );
+            }
+        } else if ( $this->is_wpml_active() ) {
+            $wpml_settings = get_option( 'icl_sitepress_settings' );
+
+            if ( is_array( $wpml_settings ) && ! empty( $wpml_settings['active_languages'] ) && is_array( $wpml_settings['active_languages'] ) ) {
+                foreach ( $wpml_settings['active_languages'] as $code => $language ) {
+                    $language = is_string( $language ) ? $language : $code;
+
+                    if ( is_numeric( $language ) || empty( $language ) ) {
+                        continue;
+                    }
+
+                    $languages[] = array(
+                            'label' => $this->get_language_label( $language ),
+                            'value' => $language,
+                    );
+                }
+            } else if ( defined( 'ICL_LANGUAGE_CODE' ) ) {
+                $languages[] = array(
+                        'label' => $this->get_language_label( ICL_LANGUAGE_CODE ),
+                        'value' => ICL_LANGUAGE_CODE,
+                );
+            }
+        } else if ( function_exists( 'pll_the_languages' ) ) {
+            $polylang_languages = pll_the_languages( array( 'raw' => 1 ) );
+
+            if ( is_array( $polylang_languages ) ) {
+                foreach ( $polylang_languages as $language ) {
+                    $languages[] = array(
+                            'label' => ! empty( $language['name'] ) ? $language['name'] : $language['slug'],
+                            'value' => $language['slug'],
+                    );
+                }
+            }
+        } else {
+            $trp_settings = get_option( 'trp_settings' );
+
+            if ( is_array( $trp_settings ) && ! empty( $trp_settings['publish-languages'] ) && is_array( $trp_settings['publish-languages'] ) ) {
+                foreach ( $trp_settings['publish-languages'] as $language ) {
+                    $languages[] = array(
+                            'label' => $this->get_language_label( $language ),
+                            'value' => $language,
+                    );
+                }
+            }
+        }
+
+        if ( empty( $languages ) ) {
+            $current_language = $this->get_current_language();
+
+            if ( ! empty( $current_language ) ) {
+                $languages[] = array(
+                        'label' => $this->get_language_label( $current_language ),
+                        'value' => $current_language,
+                );
+            }
+        }
+
+        return apply_filters( 'ss_admin_languages', $this->normalize_languages( $languages ) );
+    }
+
+    /**
+     * Check whether WPML appears to be active.
+     *
+     * @return bool
+     */
+    private function is_wpml_active() {
+        return defined( 'ICL_SITEPRESS_VERSION' ) || defined( 'ICL_LANGUAGE_CODE' ) || has_filter( 'wpml_active_languages' );
+    }
+
+    /**
+     * Check whether language export options should be exposed to the admin app.
+     *
+     * @return bool
+     */
+    private function can_show_languages() {
+        if ( ! function_exists( 'is_plugin_active' ) ) {
+            include_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
+        $has_multilingual_plugin = is_plugin_active( 'sitepress-multilingual-cms/sitepress.php' ) ||
+                                   is_plugin_active( 'polylang/polylang.php' ) ||
+                                   is_plugin_active( 'polylang-pro/polylang.php' ) ||
+                                   is_plugin_active( 'translatepress-multilingual/index.php' );
+
+        if ( ! $has_multilingual_plugin ) {
+            return false;
+        }
+
+        $settings = get_option( 'simply-static' );
+
+        if ( is_array( $settings ) && array_key_exists( 'integrations', $settings ) ) {
+            return is_array( $settings['integrations'] ) && in_array( 'multilingual', $settings['integrations'], true );
+        }
+
+        return true;
+    }
+
+    /**
+     * Check whether a multilingual plugin appears to be active.
+     *
+     * @return bool
+     */
+    private function has_multilingual_plugin() {
+        if ( $this->is_wpml_active() || function_exists( 'pll_the_languages' ) ) {
+            return true;
+        }
+
+        $trp_settings = get_option( 'trp_settings' );
+
+        return is_array( $trp_settings );
+    }
+
+    /**
+     * Get the currently active language code.
+     *
+     * @return string
+     */
+    private function get_current_language() {
+        if ( defined( 'ICL_LANGUAGE_CODE' ) ) {
+            return ICL_LANGUAGE_CODE;
+        }
+
+        if ( function_exists( 'pll_current_language' ) ) {
+            $language = pll_current_language( 'slug' );
+
+            if ( $language ) {
+                return $language;
+            }
+        }
+
+        return substr( get_locale(), 0, 2 );
+    }
+
+    /**
+     * Normalize language rows and remove duplicates.
+     *
+     * @param array $languages Languages.
+     *
+     * @return array
+     */
+    private function normalize_languages( $languages ) {
+        $normalized = array();
+
+        foreach ( $languages as $language ) {
+            if ( empty( $language['value'] ) ) {
+                continue;
+            }
+
+            $value = sanitize_key( $language['value'] );
+
+            if ( isset( $normalized[ $value ] ) ) {
+                continue;
+            }
+
+            $normalized[ $value ] = array(
+                    'label' => ! empty( $language['label'] ) ? $language['label'] : $value,
+                    'value' => $value,
+            );
+        }
+
+        return array_values( $normalized );
+    }
+
+    /**
+     * Get a readable label for a language code.
+     *
+     * @param string $language Language code.
+     *
+     * @return string
+     */
+    private function get_language_label( $language ) {
+        if ( function_exists( 'locale_get_display_name' ) ) {
+            $label = locale_get_display_name( $language, get_locale() );
+
+            if ( $label ) {
+                return $label;
+            }
+        }
+
+        return $language;
     }
 
     public function render_settings() {
@@ -1277,6 +1496,125 @@ class Admin_Settings {
         $node->meta['rel']    = 'noopener noreferrer';
 
         $admin_bar->add_node( (array) $node );
+    }
+
+    /**
+     * Return export progress for the browser tab title indicator.
+     *
+     * @return void
+     */
+    public function get_export_progress_title_status() {
+        if ( ! isset( $_POST['security'] ) || ! wp_verify_nonce( $_POST['security'], 'ss-export-progress-title-nonce' ) ) {
+            wp_die( 'Security check failed' );
+        }
+
+        $cap_generate = apply_filters( 'ss_user_capability', 'publish_pages', 'generate' );
+        if ( ! current_user_can( $cap_generate ) ) {
+            wp_send_json_error( [ 'status' => 'forbidden' ], 403 );
+        }
+
+        try {
+            $job      = Plugin::instance()->get_archive_creation_job();
+            $progress = method_exists( $job, 'get_progress' ) ? $job->get_progress() : 0;
+            $status   = 'idle';
+
+            if ( method_exists( $job, 'is_running' ) && $job->is_running() ) {
+                $status = 'running';
+            } elseif ( method_exists( $job, 'is_paused' ) && $job->is_paused() ) {
+                $status = 'waiting';
+            }
+
+            wp_send_json_success( [
+                'status'   => $status,
+                'progress' => $progress,
+            ] );
+        } catch ( \Throwable $e ) {
+            wp_send_json_error( [ 'status' => 'error' ] );
+        }
+    }
+
+    /**
+     * Print the browser tab title progress indicator.
+     *
+     * This is intentionally independent from the Admin Bar integration so the
+     * Command Center integration can provide the same background-export signal.
+     *
+     * @return void
+     */
+    public function print_export_progress_title_assets() {
+        if ( ! is_user_logged_in() || ! $this->is_export_progress_title_enabled() ) {
+            return;
+        }
+
+        $cap_generate = apply_filters( 'ss_user_capability', 'publish_pages', 'generate' );
+        if ( ! current_user_can( $cap_generate ) ) {
+            return;
+        }
+
+        $ajax_url     = admin_url( 'admin-ajax.php' );
+        $nonce        = wp_create_nonce( 'ss-export-progress-title-nonce' );
+        $title_prefix = esc_js( __( 'Simply Static', 'simply-static' ) );
+        ?>
+        <script id="ss-export-progress-title-js">
+        (function(){
+            if(window.simplyStaticExportProgressTitleLoaded) return;
+            window.simplyStaticExportProgressTitleLoaded = true;
+
+            var originalTitle = document.title;
+
+            function normalizeProgress(progress){
+                progress = parseInt(progress, 10);
+                if(isNaN(progress)) return 0;
+                return Math.max(0, Math.min(100, progress));
+            }
+
+            function updateTitle(status, progress){
+                progress = normalizeProgress(progress);
+                if(status === 'running' || status === 'waiting'){
+                    document.title = '(' + progress + '%) <?php echo $title_prefix; ?> - ' + originalTitle;
+                    return;
+                }
+                document.title = originalTitle;
+            }
+
+            function fetchStatus(){
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST','<?php echo esc_url( $ajax_url ); ?>');
+                xhr.setRequestHeader('Content-Type','application/x-www-form-urlencoded; charset=UTF-8');
+                xhr.onload = function(){
+                    try{
+                        var res = JSON.parse(xhr.responseText);
+                        var data = res && res.data ? res.data : {};
+                        updateTitle(data.status || 'idle', data.progress || 0);
+                    }catch(e){ /* noop */ }
+                };
+                xhr.send('action=ss_export_progress_title_status&security=<?php echo esc_attr( $nonce ); ?>');
+            }
+
+            fetchStatus();
+            window.setInterval(fetchStatus, 5000);
+        })();
+        </script>
+        <?php
+    }
+
+    /**
+     * Whether a toolbar integration should enable browser tab export progress.
+     *
+     * @return bool
+     */
+    private function is_export_progress_title_enabled() {
+        $integrations = Options::instance()->get( 'integrations' );
+
+        if ( empty( $integrations ) ) {
+            return true;
+        }
+
+        if ( ! is_array( $integrations ) ) {
+            return false;
+        }
+
+        return in_array( 'ss-adminbar', $integrations, true ) || in_array( 'ss-command-center', $integrations, true );
     }
 
     /**

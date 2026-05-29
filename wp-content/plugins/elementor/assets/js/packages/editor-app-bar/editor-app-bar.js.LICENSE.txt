@@ -86,6 +86,8 @@
 
 /*! ./hooks/use-document-save-template-props */
 
+/*! ./hooks/use-document-view-as-markdown-props */
+
 /*! ./hooks/use-document-view-page-props */
 
 /*! ./init */
@@ -515,3 +517,7 @@
 /*!************************************************************************************************************************!*\
   !*** ./packages/packages/core/editor-app-bar/src/extensions/documents-save/hooks/use-document-copy-and-share-props.ts ***!
   \************************************************************************************************************************/
+
+/*!**************************************************************************************************************************!*\
+  !*** ./packages/packages/core/editor-app-bar/src/extensions/documents-save/hooks/use-document-view-as-markdown-props.ts ***!
+  \**************************************************************************************************************************/

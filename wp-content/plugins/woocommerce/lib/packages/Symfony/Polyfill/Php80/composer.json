@@ -3,7 +3,7 @@
     "type": "library",
     "description": "Symfony polyfill backporting some PHP 8.0+ features to lower PHP versions",
     "keywords": ["polyfill", "shim", "compatibility", "portable"],
-    "homepage": "https://symfony.com/",
+    "homepage": "https://symfony.com",
     "license": "MIT",
     "authors": [
         {

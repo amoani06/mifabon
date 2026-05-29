@@ -1298,6 +1298,7 @@ class Admin_Rest {
         $params  = $request->get_params();
         $blog_id = ! empty( $params['blog_id'] ) ? $params['blog_id'] : 0;
         $type    = ! empty( $params['type'] ) ? $params['type'] : 'export';
+        $language = ! empty( $params['language'] ) ? sanitize_text_field( wp_unslash( $params['language'] ) ) : '';
 
         if ( $blog_id && is_multisite() ) {
             $this->switch_to_blog_and_refresh_options( $blog_id );
@@ -1322,6 +1323,12 @@ class Admin_Rest {
         }
 
         try {
+            if ( ! empty( $language ) ) {
+                update_option( 'simply-static-use-language', $language, false );
+            } else {
+                delete_option( 'simply-static-use-language' );
+            }
+
             do_action( 'ss_before_perform_archive_action', $blog_id, 'start', Plugin::instance()->get_archive_creation_job() );
 
             $type = apply_filters( 'ss_export_type', $type );
@@ -1420,7 +1427,8 @@ class Admin_Rest {
         $stats = [
             'status'  => 200,
             'running' => $job->is_running(),
-            'paused'  => $job->is_paused()
+            'paused'  => $job->is_paused(),
+            'progress' => method_exists( $job, 'get_progress' ) ? $job->get_progress() : 0,
         ];
 
         // Kickstart fallback: if the job is "running" but no process lock
