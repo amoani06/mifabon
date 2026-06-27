@@ -1,4 +1,17 @@
 <?php
+if (!defined("RSSSL_HEADERS_ACTIVE") && file_exists( ABSPATH . "wp-content/advanced-headers.php")) {
+	require_once ABSPATH . "wp-content/advanced-headers.php";
+}
+
+//Begin Really Simple Security session cookie settings
+@ini_set('session.cookie_httponly', true);
+@ini_set('session.cookie_secure', true);
+@ini_set('session.use_only_cookies', true);
+//END Really Simple Security cookie settings
+//Begin Really Simple Security key
+define('RSSSL_KEY', 'gm4UsghW2dW4sCRbDa3Zbq8jtMFBSEsAStUXbJ2b1w1FStnMOGnIaqgFoqW1kTPM');
+//END Really Simple Security key
+
 /**
  * The base configuration for WordPress
  *

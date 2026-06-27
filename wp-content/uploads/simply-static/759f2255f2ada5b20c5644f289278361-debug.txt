@@ -50443,3 +50443,4 @@
 [2026-05-29 20:17:55] [class-ss-archive-creation-job.php:261] This task is done and there are no more tasks, time to complete the job
 [2026-05-29 20:17:55] [class-ss-archive-creation-job.php:306] Completing the job
 [2026-05-29 20:17:55] [class-ss-archive-creation-job.php:540] Status message: [done] Done! Finished in 00:07:37
+[2026-05-30 16:19:07] [class-ss-crawlers.php:74] Found 18 crawler files
