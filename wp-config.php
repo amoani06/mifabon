@@ -1,7 +1,4 @@
 <?php
-if (!defined("RSSSL_HEADERS_ACTIVE") && file_exists( ABSPATH . "wp-content/advanced-headers.php")) {
-	require_once ABSPATH . "wp-content/advanced-headers.php";
-}
 
 
 //Begin Really Simple Security session cookie settings
