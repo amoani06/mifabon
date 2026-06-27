@@ -17,10 +17,6 @@ if ( isset($_GET["rsssl_header_test"]) && (int) $_GET["rsssl_header_test"] ===  
 
 if ( defined("RSSSL_HEADERS_ACTIVE" ) ) return;
 define( "RSSSL_HEADERS_ACTIVE", true );
-if ( file_exists( "C:\xampp\htdocs\mifabon/wp-content/firewall.php" ) ) {
-    require_once "C:\xampp\htdocs\mifabon/wp-content/firewall.php";
-}
-
 //RULES START
 
 if ( !headers_sent() ) {
